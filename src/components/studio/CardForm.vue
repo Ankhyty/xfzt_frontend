@@ -1,36 +1,35 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import MarkdownIt from 'markdown-it'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useStudioStore } from '../../stores/studio'
 import { useGalleryStore } from '../../stores/gallery'
 import { useToastStore } from '../../stores/toast'
 import { addAnimeToSeasonApi } from '../../api/seasons'
+import { fuzzyFilterAndSort } from '../../utils/fuzzy'
 import {
-  Sparkles,
   Star,
   Plus,
   BookOpen,
-  Eye,
-  Edit,
-  Columns,
   Quote,
-  Flame,
-  Check
+  Search,
+  Check,
+  ChevronDown,
+  X,
+  Sparkles,
+  AlertCircle
 } from 'lucide-vue-next'
 
 const studioStore = useStudioStore()
 const galleryStore = useGalleryStore()
 const toastStore = useToastStore()
 
-const md = new MarkdownIt({ html: false, linkify: true, typographer: true })
-
-// Editor Mode: 'edit' | 'split' | 'preview'
-const editorMode = ref<'edit' | 'split' | 'preview'>('split')
-
-// Inline Add Anime Modal State
-const isAddAnimeModalOpen = ref(false)
-const newAnimeName = ref('')
+// Combobox Search State
+const animeSearchInput = ref('')
+const isDropdownOpen = ref(false)
 const isAddingAnime = ref(false)
+const comboboxRef = ref<HTMLElement | null>(null)
+
+// Exact required score ticks: 4.0, 5.0, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0
+const scoreTicks = [4.0, 5.0, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 
 const currentSeasonObj = computed(() => {
   return galleryStore.seasons.find((s) => s.name === studioStore.seasonTag)
@@ -40,7 +39,23 @@ const animeCandidates = computed(() => {
   return currentSeasonObj.value?.animes || []
 })
 
-// Initialize season if empty
+// Typo-tolerant & fuzzy filtered anime list
+const filteredAnimeCandidates = computed(() => {
+  return fuzzyFilterAndSort(animeCandidates.value, animeSearchInput.value)
+})
+
+// Auto-fill latest season if empty
+function ensureDefaultSeason() {
+  if (!studioStore.seasonTag && galleryStore.seasons.length > 0) {
+    studioStore.seasonTag = galleryStore.seasons[0].name
+  }
+}
+
+onMounted(() => {
+  ensureDefaultSeason()
+  document.addEventListener('click', handleClickOutside)
+})
+
 watch(
   () => galleryStore.seasons,
   (seasons) => {
@@ -48,34 +63,61 @@ watch(
       studioStore.seasonTag = seasons[0].name
     }
   },
+  { immediate: true, deep: true }
+)
+
+// Sync input text when studioStore.animeName changes externally
+watch(
+  () => studioStore.animeName,
+  (val) => {
+    animeSearchInput.value = val
+  },
   { immediate: true }
 )
 
-const renderedMarkdown = computed(() => {
-  if (!studioStore.content.trim()) {
-    return '<p style="color:#64748b;font-style:italic;">右侧或预览模式将实时呈现 Markdown 渲染效果...</p>'
-  }
-  return md.render(studioStore.content)
-})
+function selectAnime(anime: string) {
+  studioStore.animeName = anime
+  animeSearchInput.value = anime
+  isDropdownOpen.value = false
+}
 
-async function handleAddAnime() {
-  if (!newAnimeName.value.trim()) {
-    toastStore.warning('请输入番剧名称')
+function handleInputFocus() {
+  isDropdownOpen.value = true
+}
+
+function clearAnimeSelection() {
+  studioStore.animeName = ''
+  animeSearchInput.value = ''
+  isDropdownOpen.value = true
+}
+
+function setQuickScore(val: number) {
+  studioStore.score = val
+}
+
+function handleClickOutside(e: MouseEvent) {
+  if (comboboxRef.value && !comboboxRef.value.contains(e.target as Node)) {
+    isDropdownOpen.value = false
+  }
+}
+
+async function handleAddNewAnime(animeNameToAdd?: string) {
+  const targetName = (animeNameToAdd || animeSearchInput.value).trim()
+  if (!targetName) {
+    toastStore.warning('请输入要新建的番剧名称')
     return
   }
   if (!currentSeasonObj.value) {
-    toastStore.warning('请先选择季度')
+    toastStore.warning('请先选择所属季度')
     return
   }
 
   isAddingAnime.value = true
   try {
-    const updated = await addAnimeToSeasonApi(currentSeasonObj.value.season_id, newAnimeName.value.trim())
-    toastStore.success(`已向 ${currentSeasonObj.value.name} 新增番剧词条「${newAnimeName.value.trim()}」`)
-    studioStore.animeName = newAnimeName.value.trim()
-    newAnimeName.value = ''
-    isAddAnimeModalOpen.value = false
+    await addAnimeToSeasonApi(currentSeasonObj.value.season_id, targetName)
+    toastStore.success(`已向 ${currentSeasonObj.value.name} 新增番剧「${targetName}」`)
     await galleryStore.fetchSeasons()
+    selectAnime(targetName)
   } catch (e: any) {
     console.error(e)
   } finally {
@@ -88,76 +130,147 @@ async function handleAddAnime() {
   <div class="card-form-container">
     <!-- Meta Settings Row -->
     <div class="form-row-grid">
-      <!-- Season Selection -->
+      <!-- Season Selection (Clean, no suffix) -->
       <div class="form-group">
         <label class="form-label">所属季度 <span class="required-star">*</span></label>
         <select v-model="studioStore.seasonTag" class="form-select">
           <option v-for="s in galleryStore.seasons" :key="s.season_id" :value="s.name">
-            {{ s.name }} ({{ s.animes.length }} 部候选番剧)
+            {{ s.name }}
           </option>
         </select>
       </div>
 
-      <!-- Anime Name Selection -->
-      <div class="form-group">
-        <div class="label-with-action">
-          <label class="form-label">评测番剧名称 <span class="required-star">*</span></label>
-          <button
-            type="button"
-            class="inline-action-btn"
-            @click="isAddAnimeModalOpen = true"
-          >
-            <Plus :size="13" />
-            <span>新增番剧词条</span>
-          </button>
-        </div>
+      <!-- Searchable Anime Combobox (Typo-tolerant fuzzy search + Bottom New Entry option) -->
+      <div class="form-group anime-combobox-group">
+        <label class="form-label">评测番剧名称 <span class="required-star">*</span></label>
+        
+        <div ref="comboboxRef" class="combobox-wrapper">
+          <div class="combobox-input-box" :class="{ focused: isDropdownOpen }">
+            <Search :size="16" class="combobox-search-icon" />
+            <input
+              v-model="animeSearchInput"
+              type="text"
+              class="combobox-input"
+              placeholder="输入番剧名搜索（支持错字容错）或选择..."
+              @focus="handleInputFocus"
+              @keyup.enter="filteredAnimeCandidates.length === 1 ? selectAnime(filteredAnimeCandidates[0]) : null"
+            />
+            <button
+              v-if="animeSearchInput"
+              type="button"
+              class="clear-input-btn"
+              @click="clearAnimeSelection"
+            >
+              <X :size="14" />
+            </button>
+            <button
+              type="button"
+              class="dropdown-arrow-btn"
+              @click="isDropdownOpen = !isDropdownOpen"
+            >
+              <ChevronDown :size="16" :class="{ 'rotate-180': isDropdownOpen }" />
+            </button>
+          </div>
 
-        <select v-model="studioStore.animeName" class="form-select">
-          <option value="" disabled>请从当前季度候选清单中选择番剧</option>
-          <option v-for="anime in animeCandidates" :key="anime" :value="anime">
-            {{ anime }}
-          </option>
-        </select>
-      </div>
-    </div>
+          <!-- Dropdown List Overlay -->
+          <div v-if="isDropdownOpen" class="combobox-dropdown glass-panel-strong animate-scale-in">
+            <!-- Header Hint -->
+            <div class="dropdown-header-hint">
+              <span>当前季度候选番剧 ({{ filteredAnimeCandidates.length }})</span>
+            </div>
 
-    <!-- Score & Commit Message Row -->
-    <div class="form-row-grid score-row">
-      <!-- Score -->
-      <div class="form-group">
-        <label class="form-label">综合推荐评分 (0.0 ~ 10.0)</label>
-        <div class="score-input-wrapper">
-          <input
-            v-model.number="studioStore.score"
-            type="range"
-            min="0"
-            max="10"
-            step="0.1"
-            class="score-slider"
-          />
-          <div class="score-display-box">
-            <Star :size="16" class="star-gold" />
-            <span class="score-text">{{ Number(studioStore.score).toFixed(1) }}</span>
+            <!-- List of existing candidate matches -->
+            <ul v-if="filteredAnimeCandidates.length > 0" class="dropdown-list">
+              <li
+                v-for="anime in filteredAnimeCandidates"
+                :key="anime"
+                class="dropdown-item"
+                :class="{ selected: studioStore.animeName === anime }"
+                @click="selectAnime(anime)"
+              >
+                <span class="anime-name-text">{{ anime }}</span>
+                <Check v-if="studioStore.animeName === anime" :size="14" class="text-indigo" />
+              </li>
+            </ul>
+
+            <div v-else class="no-match-notice">
+              <span>无完全匹配的已知候选项</span>
+            </div>
+
+            <!-- Always Last Item: Prominent Create New Anime Option (Requirement 3) -->
+            <div class="dropdown-add-section">
+              <div class="section-divider"></div>
+              <button
+                type="button"
+                class="add-anime-action-btn"
+                :disabled="isAddingAnime"
+                @click="handleAddNewAnime()"
+              >
+                <div class="btn-top-tag">
+                  <AlertCircle :size="13" class="text-amber" />
+                  <span>找不到想要的番剧？</span>
+                </div>
+                <div class="btn-body-row">
+                  <div class="plus-icon-box">
+                    <Plus :size="15" />
+                  </div>
+                  <div class="btn-text-content">
+                    <span class="action-title">
+                      {{ isAddingAnime ? '正在创建...' : (animeSearchInput.trim() ? `新建「${animeSearchInput.trim()}」词条并选定` : '新建自定义番剧词条并选定') }}
+                    </span>
+                    <span class="action-subtitle">
+                      * 仅在上方的候选项均无您要评测的作品时使用
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Commit Message -->
-      <div class="form-group">
-        <label class="form-label">版本提交说明 (Commit Message)</label>
+    <!-- Score Setting with Slider & Clickable Ticks (Requirement 4: 4.0 ~ 9.0) -->
+    <div class="form-group score-section-group">
+      <div class="score-header-row">
+        <label class="form-label">综合推荐评分 (0.0 ~ 10.0)</label>
+        <span class="score-quick-hint">滑动滑杆或直接点击下方刻度直接选定</span>
+      </div>
+
+      <div class="score-input-wrapper">
         <input
-          v-model="studioStore.commitMessage"
-          type="text"
-          class="form-input"
-          placeholder="例如：初稿成稿 / 修正第8话作画分析"
+          v-model.number="studioStore.score"
+          type="range"
+          min="0"
+          max="10"
+          step="0.1"
+          class="score-slider"
         />
+        <div class="score-display-box">
+          <Star :size="16" class="star-gold" />
+          <span class="score-text">{{ Number(studioStore.score).toFixed(1) }}</span>
+        </div>
+      </div>
+
+      <!-- Clickable Integer & Half-Integer Ticks Bar: 4.0, 5.0, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0 -->
+      <div class="score-ticks-bar">
+        <button
+          v-for="tick in scoreTicks"
+          :key="tick"
+          type="button"
+          class="tick-chip-btn"
+          :class="{ active: Math.abs(studioStore.score - tick) < 0.05 }"
+          @click="setQuickScore(tick)"
+        >
+          {{ tick.toFixed(1) }}
+        </button>
       </div>
     </div>
 
     <!-- Highlight Summary -->
     <div class="form-group">
       <label class="form-label">
-        <Quote :size="14" class="inline-label-icon" /> 一句话亮点简评 (Summary) <span class="required-star">*</span>
+        <Quote :size="14" class="inline-label-icon" /> 一句话亮点简评 <span class="required-star">*</span>
       </label>
       <input
         v-model="studioStore.summary"
@@ -168,85 +281,18 @@ async function handleAddAnime() {
       />
     </div>
 
-    <!-- Markdown Article Editor Area -->
+    <!-- Pure Text Article Editor Area -->
     <div class="form-group editor-group">
-      <div class="editor-header">
-        <label class="form-label">
-          <BookOpen :size="14" class="inline-label-icon" /> 评测长文正文 (Markdown 格式) <span class="required-star">*</span>
-        </label>
+      <label class="form-label">
+        <BookOpen :size="14" class="inline-label-icon" /> 评测正文内容 <span class="required-star">*</span>
+      </label>
 
-        <!-- Mode Toggle Switcher -->
-        <div class="editor-mode-toggle">
-          <button
-            type="button"
-            class="mode-btn"
-            :class="{ active: editorMode === 'edit' }"
-            @click="editorMode = 'edit'"
-          >
-            <Edit :size="13" />
-            <span>仅编辑</span>
-          </button>
-          <button
-            type="button"
-            class="mode-btn"
-            :class="{ active: editorMode === 'split' }"
-            @click="editorMode = 'split'"
-          >
-            <Columns :size="13" />
-            <span>分栏对照</span>
-          </button>
-          <button
-            type="button"
-            class="mode-btn"
-            :class="{ active: editorMode === 'preview' }"
-            @click="editorMode = 'preview'"
-          >
-            <Eye :size="13" />
-            <span>实时预览</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Editor Container -->
-      <div class="editor-box" :class="editorMode">
-        <textarea
-          v-if="editorMode === 'edit' || editorMode === 'split'"
-          v-model="studioStore.content"
-          class="markdown-textarea"
-          placeholder="支持完整 Markdown 语法：&#10;# 一级标题&#10;## 二级分段分析&#10;- 要点列表&#10;> 引用台词与高光金句&#10;**加粗重点** 与 剧照穿插说明..."
-          rows="14"
-        ></textarea>
-
-        <div
-          v-if="editorMode === 'preview' || editorMode === 'split'"
-          class="markdown-preview-pane markdown-body"
-          v-html="renderedMarkdown"
-        ></div>
-      </div>
-    </div>
-
-    <!-- Modal: Add New Anime Name -->
-    <div v-if="isAddAnimeModalOpen" class="submodal-overlay" @click.self="isAddAnimeModalOpen = false">
-      <div class="submodal-dialog glass-panel-strong animate-scale-in">
-        <h4 class="submodal-title">向 {{ studioStore.seasonTag }} 新增番剧词条</h4>
-        <p class="submodal-desc">作者与管理员均可为所属季度追加番单候选条目。</p>
-        <div class="form-group" style="margin-top: 1rem;">
-          <input
-            v-model="newAnimeName"
-            type="text"
-            class="form-input"
-            placeholder="例如：败犬女主太多了！第二季"
-            @keyup.enter="handleAddAnime"
-          />
-        </div>
-        <div class="submodal-actions">
-          <button type="button" class="btn btn-secondary" @click="isAddAnimeModalOpen = false">取消</button>
-          <button type="button" class="btn btn-primary" :disabled="isAddingAnime" @click="handleAddAnime">
-            <Check :size="16" />
-            <span>{{ isAddingAnime ? '添加中...' : '确认新增' }}</span>
-          </button>
-        </div>
-      </div>
+      <textarea
+        v-model="studioStore.content"
+        class="plain-text-textarea"
+        placeholder="在此输入评测长文正文内容（支持分段换行）..."
+        rows="12"
+      ></textarea>
     </div>
   </div>
 </template>
@@ -260,7 +306,7 @@ async function handleAddAnime() {
 
 .form-row-grid {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
+  grid-template-columns: 1fr 1.6fr;
   gap: 1.25rem;
 }
 
@@ -268,26 +314,228 @@ async function handleAddAnime() {
   color: #f43f5e;
 }
 
-.label-with-action {
+.anime-combobox-group {
+  position: relative;
+}
+
+.combobox-wrapper {
+  position: relative;
+}
+
+.combobox-input-box {
+  display: flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  padding: 0 0.5rem 0 0.85rem;
+  transition: all var(--transition-fast);
+}
+
+.combobox-input-box.focused {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.combobox-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+}
+
+.combobox-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  padding: 0.75rem 0;
+  outline: none;
+}
+
+.combobox-input::placeholder {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.clear-input-btn,
+.dropdown-arrow-btn {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0.35rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.dropdown-arrow-btn .rotate-180 {
+  transform: rotate(180deg);
+  color: var(--accent-primary);
+}
+
+.clear-input-btn:hover,
+.dropdown-arrow-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border-glass);
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(20px);
+}
+
+.dropdown-header-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 0.3rem 0.6rem;
+  font-weight: 600;
+}
+
+.dropdown-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-xs);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dropdown-item:hover {
+  background: rgba(99, 102, 241, 0.2);
+  color: #fff;
+}
+
+.dropdown-item.selected {
+  background: rgba(99, 102, 241, 0.35);
+  font-weight: 700;
+  color: #a5b4fc;
+}
+
+.no-match-notice {
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Add Anime Bottom Option (Prominent) */
+.dropdown-add-section {
+  margin-top: 0.5rem;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin-bottom: 0.5rem;
+}
+
+.add-anime-action-btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px dashed rgba(99, 102, 241, 0.35);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.add-anime-action-btn:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: var(--accent-primary);
+  border-style: solid;
+}
+
+.btn-top-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.btn-body-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.plus-icon-box {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-xs);
+  background: var(--gradient-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.btn-text-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.action-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.action-subtitle {
+  font-size: 0.725rem;
+  color: #cbd5e1;
+  line-height: 1.3;
+}
+
+.score-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.score-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.inline-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+.score-quick-hint {
   font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--accent-primary);
-  padding: 0.15rem 0.4rem;
-  border-radius: var(--radius-xs);
-  transition: all var(--transition-fast);
-}
-
-.inline-action-btn:hover {
-  background: rgba(99, 102, 241, 0.15);
+  color: var(--text-muted);
 }
 
 .score-input-wrapper {
@@ -324,132 +572,76 @@ async function handleAddAnime() {
   font-family: var(--font-display);
 }
 
+.score-ticks-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.tick-chip-btn {
+  padding: 0.25rem 0.6rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.tick-chip-btn:hover {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.tick-chip-btn.active {
+  background: #f59e0b;
+  color: #000;
+  border-color: #f59e0b;
+  font-weight: 800;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+}
+
 .inline-label-icon {
   vertical-align: middle;
   color: var(--accent-primary);
 }
 
 .summary-input {
-  font-size: 1rem;
+  font-size: 0.95rem;
   border-color: rgba(99, 102, 241, 0.3);
 }
 
-.editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-.editor-mode-toggle {
-  display: flex;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 0.2rem;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--border-glass);
-}
-
-.mode-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.25rem 0.6rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  border-radius: 4px;
-  transition: all var(--transition-fast);
-}
-
-.mode-btn.active {
-  background: var(--accent-primary);
-  color: white;
-}
-
-.editor-box {
-  display: grid;
-  gap: 1rem;
-  min-height: 380px;
-}
-
-.editor-box.edit {
-  grid-template-columns: 1fr;
-}
-
-.editor-box.preview {
-  grid-template-columns: 1fr;
-}
-
-.editor-box.split {
-  grid-template-columns: 1fr 1fr;
-}
-
-.markdown-textarea {
+.plain-text-textarea {
   width: 100%;
   padding: 1rem;
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 0.9rem;
-  line-height: 1.6;
+  font-size: 0.95rem;
+  line-height: 1.7;
   resize: vertical;
+  min-height: 260px;
 }
 
-.markdown-preview-pane {
-  padding: 1rem;
-  background: rgba(10, 15, 30, 0.75);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-sm);
-  overflow-y: auto;
-  max-height: 480px;
+.plain-text-textarea:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+  background: rgba(15, 23, 42, 0.95);
 }
 
-/* Submodal */
-.submodal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2500;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+.text-indigo {
+  color: var(--accent-primary);
 }
-
-.submodal-dialog {
-  width: 100%;
-  max-width: 400px;
-  padding: 1.75rem;
-  border-radius: var(--radius-md);
-}
-
-.submodal-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 0.3rem;
-}
-
-.submodal-desc {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.submodal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
+.text-amber {
+  color: var(--accent-amber);
 }
 
 @media (max-width: 768px) {
   .form-row-grid {
-    grid-template-columns: 1fr;
-  }
-  .editor-box.split {
     grid-template-columns: 1fr;
   }
 }

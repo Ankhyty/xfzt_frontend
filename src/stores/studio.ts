@@ -52,12 +52,12 @@ export const useStudioStore = defineStore('studio', () => {
     return cardId.value ? `v${num + 1}` : 'v1'
   })
 
-  function resetForm() {
+  function resetForm(defaultSeason?: string) {
     cardId.value = ''
     animeName.value = ''
-    seasonTag.value = ''
+    seasonTag.value = defaultSeason || ''
     currentVersion.value = 'v1'
-    commitMessage.value = '初次成稿提交'
+    commitMessage.value = ''
     score.value = 9.0
     summary.value = ''
     content.value = ''
@@ -84,7 +84,7 @@ export const useStudioStore = defineStore('studio', () => {
 
     isUploading.value = true
     uploadStep.value = 'preparing'
-    uploadStepDescription.value = '正在封装文字 JSON 并计算资产哈希...'
+    uploadStepDescription.value = '正在整理评测内容与素材...'
 
     try {
       // 2. Prepare text/article.json
@@ -147,7 +147,7 @@ export const useStudioStore = defineStore('studio', () => {
 
       // 5. Request Presign Upload URLs
       uploadStep.value = 'presigning'
-      uploadStepDescription.value = '正在申请 OBS 直传凭证通行证...'
+      uploadStepDescription.value = '正在建立素材上传通道...'
       const presignRes = await requestPresignUploadApi(
         activeCardId,
         targetVersion,
@@ -158,9 +158,9 @@ export const useStudioStore = defineStore('studio', () => {
         }))
       )
 
-      // 6. Execute Direct OBS Uploads
+      // 6. Execute Direct Uploads
       uploadStep.value = 'uploading'
-      uploadStepDescription.value = '正在将文件直传至对象存储 (OBS)...'
+      uploadStepDescription.value = '正在上传正文与高清图片素材...'
 
       for (let i = 0; i < filesToUpload.length; i++) {
         const fileItem = filesToUpload[i]
@@ -187,11 +187,11 @@ export const useStudioStore = defineStore('studio', () => {
 
       // 7. Commit Version
       uploadStep.value = 'committing'
-      uploadStepDescription.value = '正在提交版本登记与文件清单...'
+      uploadStepDescription.value = '正在完成发布登记...'
       await commitCardVersionApi(
         activeCardId,
         targetVersion,
-        commitMessage.value || '版本更新',
+        commitMessage.value || '',
         filesToUpload.map((f) => ({
           relative_path: f.relativePath,
           content_type: f.contentType,
@@ -200,7 +200,7 @@ export const useStudioStore = defineStore('studio', () => {
       )
 
       uploadStep.value = 'done'
-      uploadStepDescription.value = '发布成功！版本已生效。'
+      uploadStepDescription.value = '发布成功！新版本已上线。'
 
       // Trigger Confetti!
       try {

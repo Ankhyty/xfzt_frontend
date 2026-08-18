@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useStudioStore } from '../../stores/studio'
 import { useToastStore } from '../../stores/toast'
 import { processImageFile } from '../../services/image'
-import { UploadCloud, Trash2, CheckCircle2, Image as ImageIcon, Sparkles } from 'lucide-vue-next'
+import { UploadCloud, Trash2, Image as ImageIcon } from 'lucide-vue-next'
 
 const studioStore = useStudioStore()
 const toastStore = useToastStore()
@@ -25,7 +25,7 @@ async function handleFiles(files: FileList | File[]) {
       const result = await processImageFile(file)
       studioStore.addProcessedImage(result)
     }
-    toastStore.success(`已成功转换并生成 ${imageFiles.length} 张图片的 WebP 格式与对应缩略图`)
+    toastStore.success(`已添加 ${imageFiles.length} 张图片素材`)
   } catch (err: any) {
     toastStore.error(err.message || '图片处理失败')
   } finally {
@@ -56,7 +56,7 @@ function onFileSelect(e: Event) {
         <ImageIcon class="header-icon" :size="20" />
         <div>
           <h4 class="section-title">新番剧照与封面素材</h4>
-          <p class="section-desc">首张图片将自动作为画廊封面。上传后浏览器将自动转换为 WebP 并生成对应 `images_thumb` 缩略图。</p>
+          <p class="section-desc">首张图片将自动作为画廊封面，支持上传多张高清剧照。</p>
         </div>
       </div>
       <span class="img-count-badge">已添加 {{ studioStore.processedImages.length }} 张</span>
@@ -85,9 +85,9 @@ function onFileSelect(e: Event) {
           <UploadCloud :size="28" />
         </div>
         <p class="drop-main-text">
-          {{ isProcessing ? '正在自动转换 WebP 并生成缩略图...' : '点击或将剧照 / 封面拖拽至此处' }}
+          {{ isProcessing ? '正在处理图片素材...' : '点击或将剧照 / 封面拖拽至此处' }}
         </p>
-        <p class="drop-sub-text">支持 JPG, PNG, WebP (自动等比缩放与 SHA-256 哈希计算)</p>
+        <p class="drop-sub-text">支持 JPG, PNG, WebP 常见图片格式</p>
       </div>
     </div>
 
@@ -111,18 +111,7 @@ function onFileSelect(e: Event) {
         </div>
 
         <div class="preview-info">
-          <div class="info-row">
-            <span class="file-name" :title="img.originalName">{{ img.originalName }}</span>
-            <span class="badge badge-webp">WebP</span>
-          </div>
-          <div class="hash-preview">
-            <span class="hash-label">SHA256:</span>
-            <span class="hash-code" :title="img.originalFile.sha256">{{ img.originalFile.sha256.slice(0, 12) }}...</span>
-          </div>
-          <div class="thumb-hint">
-            <CheckCircle2 :size="12" class="text-emerald" />
-            <span>已生成 {{ img.thumbFile.relativePath }}</span>
-          </div>
+          <span class="file-name" :title="img.originalName">{{ img.originalName }}</span>
         </div>
       </div>
     </div>
@@ -229,7 +218,7 @@ function onFileSelect(e: Event) {
 
 .preview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
   margin-top: 0.5rem;
 }
@@ -283,58 +272,16 @@ function onFileSelect(e: Event) {
 }
 
 .preview-info {
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-}
-
-.info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
 }
 
 .file-name {
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.badge-webp {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
-}
-
-.hash-preview {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: var(--text-muted);
-}
-
-.hash-code {
-  font-family: monospace;
-  color: #94a3b8;
-}
-
-.thumb-hint {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: var(--text-secondary);
-  font-size: 0.7rem;
-}
-
-.text-emerald {
-  color: var(--accent-emerald);
+  display: block;
 }
 </style>

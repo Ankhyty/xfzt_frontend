@@ -82,3 +82,18 @@ export async function rollbackCardApi(card_id: string, target_version: string): 
   )
   return res.data.data!
 }
+
+export async function deleteCardApi(card_id: string): Promise<{ card_id: string }> {
+  const configStore = useConfigStore()
+  const authStore = useAuthStore()
+
+  if (configStore.isMockMode) {
+    await new Promise((r) => setTimeout(r, 300))
+    if (!authStore.userInfo) throw new Error('请先登录')
+    return mockDataService.deleteCard(card_id, authStore.userInfo)
+  }
+
+  const res = await axiosInstance.delete<ApiResponse<{ card_id: string }>>(`/api/v1/cards/${card_id}`)
+  return res.data.data!
+}
+

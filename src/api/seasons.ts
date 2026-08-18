@@ -1,5 +1,6 @@
 import { axiosInstance } from './client'
 import { useConfigStore } from '../stores/config'
+import { useAuthStore } from '../stores/auth'
 import { mockDataService } from '../services/mock'
 import type { ApiResponse, SeasonItem, SeasonExportData } from '../types'
 
@@ -95,3 +96,18 @@ export async function getSeasonExportApi(season_id: number): Promise<SeasonExpor
   )
   return res.data.data!
 }
+
+export async function deleteSeasonApi(season_id: number): Promise<{ season_id: number }> {
+  const configStore = useConfigStore()
+  const authStore = useAuthStore()
+
+  if (configStore.isMockMode) {
+    await new Promise((r) => setTimeout(r, 300))
+    if (!authStore.userInfo) throw new Error('请先登录')
+    return mockDataService.deleteSeason(season_id, authStore.userInfo)
+  }
+
+  const res = await axiosInstance.delete<ApiResponse<{ season_id: number }>>(`/api/v1/seasons/${season_id}`)
+  return res.data.data!
+}
+

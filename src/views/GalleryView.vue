@@ -78,6 +78,8 @@ function handleCardClick(cardId: string) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
   gap: 1.75rem;
+  position: relative;
+  z-index: 1;
 }
 
 .card-skeleton {

@@ -62,7 +62,11 @@ function handleLogout() {
           <PenTool :size="18" />
           <span>写稿创作台</span>
         </router-link>
-        <router-link v-if="authStore.isAdmin || configStore.isMockMode" to="/admin" class="nav-item" active-class="active">
+        <router-link v-if="authStore.isLoggedIn" to="/profile" class="nav-item" active-class="active">
+          <User :size="18" />
+          <span>个人中心</span>
+        </router-link>
+        <router-link v-if="authStore.isAdmin" to="/admin" class="nav-item" active-class="active">
           <ShieldCheck :size="18" />
           <span>季度管理</span>
         </router-link>
@@ -87,7 +91,7 @@ function handleLogout() {
           <div class="user-dropdown-container">
             <button class="user-profile-btn" @click="isUserMenuOpen = !isUserMenuOpen">
               <div class="user-avatar">
-                {{ authStore.userInfo.nickname.slice(0, 1) }}
+                {{ (authStore.userInfo?.nickname || authStore.userInfo?.username || 'U').slice(0, 1) }}
               </div>
               <div class="user-info-text">
                 <span class="user-name">{{ authStore.userInfo.nickname }}</span>
@@ -101,6 +105,11 @@ function handleLogout() {
                 <p class="dropdown-username">@{{ authStore.userInfo.username }}</p>
                 <p class="dropdown-role">当前角色：{{ authStore.role === 'admin' ? '系统管理员' : '撰稿作者' }}</p>
               </div>
+
+              <router-link to="/profile" class="dropdown-item" @click="isUserMenuOpen = false">
+                <User :size="16" />
+                <span>进入个人中心</span>
+              </router-link>
 
               <!-- Quick Role Switch in Mock Mode -->
               <div v-if="configStore.isMockMode" class="dropdown-mock-switch">

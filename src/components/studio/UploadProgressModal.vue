@@ -4,10 +4,8 @@ import {
   UploadCloud,
   CheckCircle2,
   AlertCircle,
-  Clock,
-  Server,
-  Database,
   FileCheck,
+  ImageIcon,
   Sparkles
 } from 'lucide-vue-next'
 
@@ -25,7 +23,7 @@ const studioStore = useStudioStore()
           <AlertCircle v-else class="icon-error" :size="28" />
         </div>
 
-        <h3 class="pipeline-title">OBS 3段式上传与版本发布</h3>
+        <h3 class="pipeline-title">正在发布新番评测</h3>
         <p class="pipeline-status-text">{{ studioStore.uploadStepDescription }}</p>
       </div>
 
@@ -33,17 +31,17 @@ const studioStore = useStudioStore()
       <div class="stepper-row">
         <div class="step-node" :class="{ active: studioStore.uploadStep === 'presigning', done: ['uploading', 'committing', 'done'].includes(studioStore.uploadStep) }">
           <div class="node-circle">1</div>
-          <span>申请通行证</span>
+          <span>准备数据</span>
         </div>
         <div class="step-line" :class="{ done: ['uploading', 'committing', 'done'].includes(studioStore.uploadStep) }"></div>
         <div class="step-node" :class="{ active: studioStore.uploadStep === 'uploading', done: ['committing', 'done'].includes(studioStore.uploadStep) }">
           <div class="node-circle">2</div>
-          <span>OBS 直传</span>
+          <span>上传图片</span>
         </div>
         <div class="step-line" :class="{ done: ['committing', 'done'].includes(studioStore.uploadStep) }"></div>
         <div class="step-node" :class="{ active: studioStore.uploadStep === 'committing', done: studioStore.uploadStep === 'done' }">
           <div class="node-circle">3</div>
-          <span>Commit 校验</span>
+          <span>完成发布</span>
         </div>
       </div>
 
@@ -66,9 +64,11 @@ const studioStore = useStudioStore()
           class="file-item-row"
         >
           <div class="file-item-left">
-            <Database v-if="file.relativePath.startsWith('images')" :size="14" class="text-indigo" />
+            <ImageIcon v-if="file.relativePath.startsWith('images')" :size="14" class="text-indigo" />
             <FileCheck v-else :size="14" class="text-secondary" />
-            <span class="file-path">{{ file.relativePath }}</span>
+            <span class="file-path">
+              {{ file.relativePath === 'text/article.json' ? '评测文字内容' : (file.relativePath.includes('_thumb') ? '封面缩略图' : '原图素材') }}
+            </span>
           </div>
 
           <div class="file-item-right">
@@ -79,7 +79,7 @@ const studioStore = useStudioStore()
               ></div>
             </div>
             <span class="file-status-tag" :class="file.status">
-              {{ file.status === 'completed' ? '已上传' : `${file.percentage}%` }}
+              {{ file.status === 'completed' ? '已完成' : `${file.percentage}%` }}
             </span>
           </div>
         </div>
@@ -100,7 +100,7 @@ const studioStore = useStudioStore()
           class="btn btn-danger btn-full"
           @click="studioStore.isUploading = false"
         >
-          <span>关闭并检查错误</span>
+          <span>关闭</span>
         </button>
       </div>
     </div>
@@ -122,7 +122,7 @@ const studioStore = useStudioStore()
 
 .upload-dialog {
   width: 100%;
-  max-width: 520px;
+  max-width: 480px;
   padding: 2.25rem;
   background: rgba(15, 23, 42, 0.96);
   border-radius: var(--radius-lg);
@@ -292,7 +292,7 @@ const studioStore = useStudioStore()
 
 .file-path {
   color: var(--text-secondary);
-  font-family: monospace;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -335,4 +335,6 @@ const studioStore = useStudioStore()
   padding: 0.75rem;
   font-size: 0.95rem;
 }
+
+.text-indigo { color: var(--accent-primary); }
 </style>

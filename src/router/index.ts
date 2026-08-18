@@ -21,6 +21,11 @@ const routes: RouteRecordRaw[] = [
     component: StudioView
   },
   {
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('../views/ProfileView.vue')
+  },
+  {
     path: '/admin',
     name: 'Admin',
     component: AdminView
