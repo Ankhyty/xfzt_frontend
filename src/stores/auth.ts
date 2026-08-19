@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { getMeApi } from '../api/auth'
 import type { UserInfo, UserRole } from '../types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -60,6 +61,23 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function fetchCurrentUser(): Promise<UserInfo | null> {
+    if (!token.value) return null
+    try {
+      const res = await getMeApi()
+      if (res && res.user_info) {
+        userInfo.value = res.user_info
+        try {
+          localStorage.setItem('xfzt_user_info', JSON.stringify(res.user_info))
+        } catch (e) {}
+        return res.user_info
+      }
+    } catch (e) {
+      console.warn('Failed to refresh user info via /auth/me', e)
+    }
+    return null
+  }
+
   function logout() {
     token.value = null
     userInfo.value = null
@@ -78,6 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     setAuth,
     switchMockRole,
+    fetchCurrentUser,
     logout
   }
 })
